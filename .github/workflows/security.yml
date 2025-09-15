@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      security-events: write   # (Semgrep SARIF'i Code Scanning'e yükleyebilsin)
 
     steps:
       - name: Checkout
@@ -56,8 +57,9 @@ jobs:
       - name: Stop container
         if: always()
         run: docker stop js || true
-        
+
+      # --- Semgrep statik analiz ---
       - name: Run Semgrep
-         uses: returntocorp/semgrep-action@v1
-         with:
-           config: p/default
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/default
