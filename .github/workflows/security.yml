@@ -1,0 +1,58 @@
+name: Security CI (Docker + SBOM)
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  build-run-sbom:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          IMAGE=juice-shop:${{ github.sha }}
+          docker build -t "$IMAGE" .
+
+      - name: Run container (smoke test)
+        run: |
+          IMAGE=juice-shop:${{ github.sha }}
+          docker run -d --rm -p 3000:3000 --name js "$IMAGE"
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000 > /dev/null; then
+              echo "App is up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "App did not start in time"; docker logs js || true
+          exit 1
+
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin
+          syft version
+
+      - name: Generate SBOM (CycloneDX) from image
+        run: |
+          IMAGE=juice-shop:${{ github.sha }}
+          syft packages "docker:$IMAGE" -o cyclonedx-json > sbom.cdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+          if-no-files-found: error
+
+      - name: Stop container
+        if: always()
+        run: docker stop js || true
