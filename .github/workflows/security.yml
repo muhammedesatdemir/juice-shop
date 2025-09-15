@@ -1,4 +1,4 @@
-name: Security CI (Docker + SBOM)
+name: Security CI (Docker + SBOM + Semgrep)
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write   # (Semgrep SARIF'i Code Scanning'e yükleyebilsin)
+      security-events: write   # SARIF raporunu code scanning için
 
     steps:
       - name: Checkout
@@ -62,6 +62,7 @@ jobs:
       - name: Run Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
-          config: p/default
-        continue-on-error: true
+          config: p/default   # public kurallar
+        continue-on-error: true  # hata olsa bile job fail olmasın
+
 
