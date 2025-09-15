@@ -1,4 +1,4 @@
-name: Security CI (Docker + SBOM + Semgrep)
+name: Security CI (Docker + SBOM + Semgrep + Gitleaks)
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write   # SARIF raporunu code scanning için
+      security-events: write   # Semgrep & Gitleaks SARIF yükleyebilsin
 
     steps:
       - name: Checkout
@@ -58,11 +58,26 @@ jobs:
         if: always()
         run: docker stop js || true
 
-      # --- Semgrep statik analiz ---
+      # --- Gitleaks: secrets taraması ---
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: >-
+            detect
+            --source=.
+            --redact
+            --report-format=sarif
+            --report-path=gitleaks.sarif
+        continue-on-error: true
+
+      - name: Upload Gitleaks SARIF to Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+
+      # --- Semgrep: statik analiz ---
       - name: Run Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
-          config: p/default   # public kurallar
-        continue-on-error: true  # hata olsa bile job fail olmasın
-
-
+          config: p/default
+        continue-on-error: true
