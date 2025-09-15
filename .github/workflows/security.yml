@@ -12,13 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write   # SARIF raporlarını Code Scanning'e göndermek için
+      security-events: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- Docker build & smoke test ---
       - name: Build Docker image
         run: |
           IMAGE=juice-shop:${{ github.sha }}
@@ -37,7 +36,6 @@ jobs:
           echo "App did not start in time"; docker logs js || true
           exit 1
 
-      # --- Syft: SBOM (CycloneDX) ---
       - name: Install Syft
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
@@ -60,14 +58,17 @@ jobs:
         if: always()
         run: docker stop js || true
 
-      # --- Gitleaks: secrets taraması (binary ile, tokensiz) ---
-      - name: Install Gitleaks
+      # --- Gitleaks: secrets taraması ---
+      - name: Install Gitleaks (from latest release)
         run: |
-          curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/install.sh \
-            | sh -s -- -b /usr/local/bin
+          set -e
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
           gitleaks version
 
-      - name: Run Gitleaks (SARIF)
+      - name: Run Gitleaks (produce SARIF)
         run: |
           gitleaks detect \
             --source . \
@@ -80,9 +81,9 @@ jobs:
         with:
           sarif_file: gitleaks.sarif
 
-      # --- Semgrep: statik analiz (tokensiz) ---
+      # --- Semgrep statik analiz ---
       - name: Run Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
           config: p/default
-        continue-on-error: true   # bulgu çıksa bile job kırılmasın
+        continue-on-error: true
