@@ -12,12 +12,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write   # Semgrep & Gitleaks SARIF yükleyebilsin
+      security-events: write   # SARIF raporlarını Code Scanning'e göndermek için
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # --- Docker build & smoke test ---
       - name: Build Docker image
         run: |
           IMAGE=juice-shop:${{ github.sha }}
@@ -36,6 +37,7 @@ jobs:
           echo "App did not start in time"; docker logs js || true
           exit 1
 
+      # --- Syft: SBOM (CycloneDX) ---
       - name: Install Syft
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
@@ -58,26 +60,29 @@ jobs:
         if: always()
         run: docker stop js || true
 
-      # --- Gitleaks: secrets taraması ---
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          args: >-
-            detect
-            --source=.
-            --redact
-            --report-format=sarif
-            --report-path=gitleaks.sarif
-        continue-on-error: true
+      # --- Gitleaks: secrets taraması (binary ile, tokensiz) ---
+      - name: Install Gitleaks
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/install.sh \
+            | sh -s -- -b /usr/local/bin
+          gitleaks version
+
+      - name: Run Gitleaks (SARIF)
+        run: |
+          gitleaks detect \
+            --source . \
+            --redact \
+            --report-format sarif \
+            --report-path gitleaks.sarif || true
 
       - name: Upload Gitleaks SARIF to Code Scanning
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: gitleaks.sarif
 
-      # --- Semgrep: statik analiz ---
+      # --- Semgrep: statik analiz (tokensiz) ---
       - name: Run Semgrep
         uses: returntocorp/semgrep-action@v1
         with:
           config: p/default
-        continue-on-error: true
+        continue-on-error: true   # bulgu çıksa bile job kırılmasın
